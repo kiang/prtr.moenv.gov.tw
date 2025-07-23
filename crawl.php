@@ -29,7 +29,7 @@ try {
         // Process each quarter's results
         foreach ($periodsResult['results'] as $periodIndex => $result) {
             echo "\n=== Quarter " . ($periodIndex + 1) . " Results ===\n";
-            echo "CSV files processed: {$result['csv_files_processed']}\n";
+            echo "JSON response processed: " . ($result['json_response_processed'] ? 'Yes' : 'No') . "\n";
             echo "Records saved: {$result['total_records_saved']}\n";
             echo "Errors: {$result['total_errors']}\n";
             

@@ -12,7 +12,7 @@ class PrtrCrawler
 {
     private Client $httpClient;
     private Logger $logger;
-    private string $baseUrl = 'https://prtr.moenv.gov.tw/api/v1/Penalty/PenaltyFile';
+    private string $baseUrl = 'https://prtr.moenv.gov.tw/api/v1/Penalty';
     private string $dataDir;
 
     public function __construct(string $dataDir = 'data')
@@ -133,6 +133,7 @@ class PrtrCrawler
             'StartDate' => '2024-07-23',
             'EndDate' => '2025-07-23',
             'RegistrationNo' => '',
+            'PageNumber' => 1,
             'PageSize' => -1
         ];
 
@@ -159,18 +160,13 @@ class PrtrCrawler
 
             $body = $response->getBody()->getContents();
 
-            // Check if response is a ZIP file
-            if (strpos($contentType, 'application/zip') !== false || 
-                substr($body, 0, 2) === 'PK') {
-                return $this->handleZipResponse($body, $queryParams);
-            } else {
-                // Handle JSON response
-                $data = json_decode($body, true);
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    throw new \Exception('Failed to decode JSON response: ' . json_last_error_msg());
-                }
-                return $data;
+            // Handle JSON response
+            $data = json_decode($body, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Failed to decode JSON response: ' . json_last_error_msg());
             }
+
+            return $this->handleJsonResponse($data, $queryParams);
 
         } catch (GuzzleException $e) {
             $this->logger->error('HTTP request failed', ['error' => $e->getMessage()]);
@@ -178,34 +174,34 @@ class PrtrCrawler
         }
     }
 
-    private function handleZipResponse(string $zipContent, array $params): array
+    private function handleJsonResponse(array $data, array $params): array
     {
         $timestamp = date('Y-m-d_H-i-s');
         
-        // Process ZIP content directly in memory
-        $csvData = $this->processZipInMemory($zipContent);
+        // Extract records from JSON response
+        $records = $data['Result']['Data'] ?? $data['data'] ?? $data;
         
-        $this->logger->info("ZIP processed in memory", [
-            'csv_files_found' => count($csvData),
-            'total_records' => array_sum(array_map('count', $csvData))
+        if (!is_array($records)) {
+            $records = [];
+        }
+
+        $this->logger->info("JSON response processed", [
+            'total_records' => count($records)
         ]);
 
-        // Save CSV data directly as JSON files
+        // Save JSON data directly as JSON files
         $totalSavedFiles = 0;
         $totalErrors = 0;
         
-        foreach ($csvData as $fileName => $records) {
-            if (!empty($records)) {
-                $this->logger->info("Processing CSV data from {file}", ['file' => $fileName]);
-                $saveResult = $this->saveAsJsonFiles($records, 'docs/sanctions');
-                $totalSavedFiles += count($saveResult['saved_files']);
-                $totalErrors += count($saveResult['errors']);
-            }
+        if (!empty($records)) {
+            $saveResult = $this->saveAsJsonFiles($records, 'docs/sanctions');
+            $totalSavedFiles = count($saveResult['saved_files']);
+            $totalErrors = count($saveResult['errors']);
         }
 
         return [
             'success' => true,
-            'csv_files_processed' => count($csvData),
+            'json_response_processed' => true,
             'total_records_saved' => $totalSavedFiles,
             'total_errors' => $totalErrors,
             'params' => $params,
@@ -214,117 +210,7 @@ class PrtrCrawler
         ];
     }
 
-    private function processZipInMemory(string $zipContent): array
-    {
-        // Create temporary file for ZIP content
-        $tempFile = tempnam(sys_get_temp_dir(), 'prtr_zip_');
-        if (file_put_contents($tempFile, $zipContent) === false) {
-            throw new \Exception('Failed to create temporary ZIP file');
-        }
 
-        $zip = new ZipArchive();
-        $result = $zip->open($tempFile);
-
-        if ($result !== TRUE) {
-            unlink($tempFile);
-            throw new \Exception("Failed to open ZIP file (Error code: {$result})");
-        }
-
-        $csvData = [];
-
-        // Process each file in the ZIP
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $fileName = $zip->getNameIndex($i);
-            
-            // Check if it's a CSV file
-            if (strtolower(pathinfo($fileName, PATHINFO_EXTENSION)) === 'csv') {
-                $csvContent = $zip->getFromIndex($i);
-                
-                if ($csvContent !== false) {
-                    $records = $this->parseCsvContent($csvContent, $fileName);
-                    $csvData[$fileName] = $records;
-                    
-                    $this->logger->info("Parsed CSV from ZIP", [
-                        'file' => $fileName,
-                        'records' => count($records)
-                    ]);
-                }
-            }
-        }
-
-        $zip->close();
-        unlink($tempFile);
-
-        return $csvData;
-    }
-
-    private function parseCsvContent(string $csvContent, string $fileName): array
-    {
-        $lines = explode("\n", $csvContent);
-        $data = [];
-        $header = null;
-
-        foreach ($lines as $lineNumber => $line) {
-            $line = trim($line);
-            if (empty($line)) continue;
-
-            $row = str_getcsv($line);
-            
-            if ($header === null) {
-                $header = $row;
-                continue;
-            }
-
-            if (count($row) === count($header)) {
-                $data[] = array_combine($header, $row);
-            } else {
-                $this->logger->warning("CSV row mismatch in {file} at line {line}", [
-                    'file' => $fileName,
-                    'line' => $lineNumber + 1
-                ]);
-            }
-        }
-
-        return $data;
-    }
-
-    public function readCsvFile(string $csvPath): array
-    {
-        if (!file_exists($csvPath)) {
-            throw new \Exception("CSV file not found: {$csvPath}");
-        }
-
-        $data = [];
-        $handle = fopen($csvPath, 'r');
-        
-        if ($handle === false) {
-            throw new \Exception("Failed to open CSV file: {$csvPath}");
-        }
-
-        // Read header
-        $header = fgetcsv($handle);
-        if ($header === false) {
-            fclose($handle);
-            throw new \Exception("Failed to read CSV header: {$csvPath}");
-        }
-
-        // Read data rows
-        while (($row = fgetcsv($handle)) !== false) {
-            if (count($row) === count($header)) {
-                $data[] = array_combine($header, $row);
-            }
-        }
-
-        fclose($handle);
-        
-        $this->logger->info("CSV file read", [
-            'file' => $csvPath,
-            'rows' => count($data),
-            'columns' => count($header)
-        ]);
-
-        return $data;
-    }
 
     public function saveAsJsonFiles(array $csvData, string $docsPath = 'docs/sanctions'): array
     {
@@ -339,7 +225,7 @@ class PrtrCrawler
                     continue;
                 }
 
-                $parsedId = $this->parseUniqueId($uniqueId);
+                $parsedId = $this->parseUniqueId($uniqueId, $row);
                 if (!$parsedId) {
                     $this->logger->warning("Failed to parse unique ID: {$uniqueId}");
                     continue;
@@ -385,7 +271,17 @@ class PrtrCrawler
 
     private function findUniqueId(array $row): ?string
     {
-        // Common column names that might contain the unique ID
+        // For new JSON API response structure, create unique ID from COUNTY + DOCUMENTNO
+        if (isset($row['COUNTY']) && isset($row['DOCUMENTNO'])) {
+            $county = trim($row['COUNTY']);
+            $documentNo = trim($row['DOCUMENTNO']);
+            
+            if (!empty($county) && !empty($documentNo)) {
+                return $county . '_' . $documentNo;
+            }
+        }
+        
+        // Fallback: try old CSV column names for backward compatibility
         $possibleColumns = ['序號', '編號', 'ID', 'id', '案件編號', '處分書字號', '裁處書字號'];
         
         foreach ($possibleColumns as $column) {
@@ -408,33 +304,86 @@ class PrtrCrawler
         return null;
     }
 
-    private function parseUniqueId(string $uniqueId): ?array
+    private function parseUniqueId(string $uniqueId, array $row = []): ?array
     {
-        if (!preg_match('/^(\d+)-(\d+)-(\d+)$/', $uniqueId, $matches)) {
-            return null;
+        // Handle new format: COUNTY_DOCUMENTNO (e.g., "高雄市_21-114-070054")
+        if (strpos($uniqueId, '_') !== false) {
+            list($county, $documentNo) = explode('_', $uniqueId, 2);
+            
+            // Parse DOCUMENTNO for codes (format: code1-year-code3)
+            if (preg_match('/^(\d+)-(\d+)-(\d+)$/', $documentNo, $matches)) {
+                $code1 = $matches[1];
+                $taiwanYear = $matches[2];
+                $code3 = $matches[3];
+                
+                // Try to get the actual year from the punishment date
+                $actualYear = $this->extractYearFromRow($row);
+                
+                // Use actual year if available, otherwise fall back to Taiwan year conversion
+                $westernYear = $actualYear ?: (intval($taiwanYear) + 1911);
+                
+                return [
+                    'original_id' => $uniqueId,
+                    'county' => $county,
+                    'document_no' => $documentNo,
+                    'code1' => $code1,
+                    'taiwan_year' => $taiwanYear,
+                    'western_year' => $westernYear,
+                    'code3' => $code3,
+                    'actual_year' => $actualYear
+                ];
+            }
+        }
+        
+        // Handle old format: direct DOCUMENTNO (format: code1-year-code3)
+        if (preg_match('/^(\d+)-(\d+)-(\d+)$/', $uniqueId, $matches)) {
+            $code1 = $matches[1];
+            $taiwanYear = $matches[2];
+            $code3 = $matches[3];
+
+            // Try to get the actual year from the punishment date
+            $actualYear = $this->extractYearFromRow($row);
+            
+            // Use actual year if available, otherwise fall back to Taiwan year conversion
+            $westernYear = $actualYear ?: (intval($taiwanYear) + 1911);
+
+            return [
+                'original_id' => $uniqueId,
+                'code1' => $code1,
+                'taiwan_year' => $taiwanYear,
+                'western_year' => $westernYear,
+                'code3' => $code3,
+                'actual_year' => $actualYear
+            ];
         }
 
-        $code1 = $matches[1];
-        $taiwanYear = $matches[2];
-        $code3 = $matches[3];
-
-        // Convert Taiwan year to Western year (Taiwan year + 1911)
-        $westernYear = intval($taiwanYear) + 1911;
-
-        return [
-            'original_id' => $uniqueId,
-            'code1' => $code1,
-            'taiwan_year' => $taiwanYear,
-            'western_year' => $westernYear,
-            'code3' => $code3
-        ];
+        return null;
     }
 
     private function createJsonFilePath(string $basePath, array $parsedId): string
     {
+        // Extract county from parsed ID if available
+        $county = $parsedId['county'] ?? '';
+        
+        if (empty($county)) {
+            // Fallback to old path structure if county is not available
+            return sprintf(
+                '%s/%d/%s/%s.json',
+                rtrim($basePath, '/'),
+                $parsedId['western_year'],
+                $parsedId['code1'],
+                $parsedId['code3']
+            );
+        }
+        
+        // Clean county name for filesystem (remove special characters)
+        $county = preg_replace('/[^\p{L}\p{N}]+/u', '_', $county);
+        $county = trim($county, '_');
+        
         return sprintf(
-            '%s/%d/%s/%s.json',
+            '%s/%s/%d/%s/%s.json',
             rtrim($basePath, '/'),
+            $county,
             $parsedId['western_year'],
             $parsedId['code1'],
             $parsedId['code3']
@@ -655,5 +604,50 @@ class PrtrCrawler
         }
 
         return false;
+    }
+
+    private function extractYearFromRow(array $row): ?int
+    {
+        // New JSON API field names
+        $dateFields = ['PENALTYDATE', 'TRANSGRESSDATE', 'UPDATETIME'];
+        
+        foreach ($dateFields as $field) {
+            if (isset($row[$field]) && !empty($row[$field])) {
+                $dateValue = trim($row[$field]);
+                
+                // Handle different date formats
+                // Format: 2025/07/03 or 2025/07/03 21:08
+                if (preg_match('/^(\d{4})\//', $dateValue, $matches)) {
+                    return (int)$matches[1];
+                }
+                
+                // Format: 2025-07-03 or 2025-07-03 21:08:00
+                if (preg_match('/^(\d{4})-/', $dateValue, $matches)) {
+                    return (int)$matches[1];
+                }
+            }
+        }
+        
+        // Fallback: try old CSV field names for backward compatibility
+        $oldDateFields = ['裁處時間', '違規時間', '裁處日期', '違規日期'];
+        
+        foreach ($oldDateFields as $field) {
+            if (isset($row[$field]) && !empty($row[$field])) {
+                $dateValue = trim($row[$field]);
+                
+                // Handle Taiwan year format (113/07/03 -> 2024)
+                if (preg_match('/^(\d{2,3})\//', $dateValue, $matches)) {
+                    $taiwanYear = (int)$matches[1];
+                    return $taiwanYear + 1911;
+                }
+                
+                // Handle western year format
+                if (preg_match('/^(\d{4})/', $dateValue, $matches)) {
+                    return (int)$matches[1];
+                }
+            }
+        }
+        
+        return null;
     }
 }
