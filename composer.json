@@ -1,0 +1,13 @@
+{
+    "name": "kiang/prtr-crawler",
+    "description": "PRTR Taiwan Environmental Data Crawler",
+    "require": {
+        "guzzlehttp/guzzle": "^7.0",
+        "monolog/monolog": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PrtrCrawler\\": "src/"
+        }
+    }
+}
