@@ -27,7 +27,7 @@ try {
         
         if (isset($crawlResult['has_data']) && $crawlResult['has_data']) {
             echo "Data found and processed:\n";
-            echo "- CSV files processed: {$crawlResult['csv_files_processed']}\n";
+            echo "- JSON response processed: " . ($crawlResult['json_response_processed'] ? 'Yes' : 'No') . "\n";
             echo "- Records saved: {$crawlResult['total_records_saved']}\n";
             echo "- Errors: {$crawlResult['total_errors']}\n";
             
