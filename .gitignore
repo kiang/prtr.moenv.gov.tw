@@ -1,0 +1,23 @@
+# Composer dependencies
+vendor/
+
+# Log files
+logs/*.log
+
+# Temporary and cache files
+*.tmp
+*.cache
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.local
+
+# Data directory (if you want to exclude raw data downloads)
+data/
