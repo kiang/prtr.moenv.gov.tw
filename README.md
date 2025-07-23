@@ -20,7 +20,9 @@ composer install
 
 ## Usage
 
-### Basic Usage
+### Full Historical Crawl
+
+Use `crawl.php` for complete historical data collection:
 
 ```php
 <?php
@@ -46,6 +48,49 @@ if (isset($result['csv_files'])) {
     }
 }
 ```
+
+### Daily Updates
+
+Use `daily_update.php` for regular data updates (recommended for production):
+
+```bash
+php daily_update.php
+```
+
+This script:
+- Crawls the most recent 3 months of data
+- Updates existing records and adds new ones
+- Designed for daily execution via cron job
+- Provides concise output suitable for logging
+
+### Cron Job Setup
+
+For automated daily updates, use the provided wrapper script:
+
+```bash
+# Make the wrapper executable
+chmod +x cron.sh
+
+# Test manually first
+./cron.sh
+
+# Add to crontab for daily execution at 2 AM
+0 2 * * * /full/path/to/project/cron.sh
+```
+
+The `cron.sh` wrapper provides:
+- Automatic dependency checking
+- Better error handling and logging  
+- Timestamped log entries
+- Log rotation (keeps 30 days)
+- Environment setup
+- **Automated git operations**:
+  - `git pull` before update
+  - `git add -A` for all changes
+  - `git commit` with auto-generated messages
+  - `git push` to remote repository
+
+See `cron_example.txt` for more scheduling options.
 
 ### Advanced Usage
 

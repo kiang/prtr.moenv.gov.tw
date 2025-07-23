@@ -582,6 +582,64 @@ class PrtrCrawler
         }
     }
 
+    public function crawlRecentThreeMonths(array $additionalParams = []): array
+    {
+        // Calculate 3-month period ending today
+        $endDate = new \DateTime();
+        $startDate = clone $endDate;
+        $startDate->sub(new \DateInterval('P3M'));
+
+        $this->logger->info("Crawling recent 3 months: {start} to {end}", [
+            'start' => $startDate->format('Y-m-d'),
+            'end' => $endDate->format('Y-m-d')
+        ]);
+
+        $params = array_merge($additionalParams, [
+            'StartDate' => $startDate->format('Y-m-d'),
+            'EndDate' => $endDate->format('Y-m-d')
+        ]);
+
+        try {
+            $result = $this->crawlPenaltyData($params);
+            
+            if (isset($result['has_data']) && $result['has_data']) {
+                $this->logger->info("Recent 3 months crawl completed successfully", [
+                    'records_saved' => $result['total_records_saved'] ?? 0,
+                    'errors' => $result['total_errors'] ?? 0
+                ]);
+            } else {
+                $this->logger->info("No new data found in recent 3 months");
+            }
+
+            return [
+                'success' => true,
+                'period' => [
+                    'start' => $startDate->format('Y-m-d'),
+                    'end' => $endDate->format('Y-m-d'),
+                    'type' => 'recent_3_months'
+                ],
+                'result' => $result
+            ];
+
+        } catch (\Exception $e) {
+            $this->logger->error("Failed to crawl recent 3 months: {error}", [
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
+        }
+    }
+
+    public function checkForExistingFile(string $uniqueId, string $docsPath = 'docs/sanctions'): bool
+    {
+        $parsedId = $this->parseUniqueId($uniqueId);
+        if (!$parsedId) {
+            return false;
+        }
+
+        $filePath = $this->createJsonFilePath($docsPath, $parsedId);
+        return file_exists($filePath);
+    }
+
     public function cleanup(string $path): bool
     {
         if (is_file($path)) {

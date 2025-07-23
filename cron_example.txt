@@ -1,0 +1,31 @@
+# PRTR Daily Update Cron Job Examples
+
+# RECOMMENDED: Use cron.sh wrapper script for better reliability
+# Run daily at 2:00 AM Taiwan time
+0 2 * * * /home/kiang/public_html/prtr.moenv.gov.tw/cron.sh
+
+# Run twice daily (6 AM and 6 PM) 
+0 6,18 * * * /home/kiang/public_html/prtr.moenv.gov.tw/cron.sh
+
+# Alternative: Direct PHP execution (less robust)
+0 2 * * * cd /home/kiang/public_html/prtr.moenv.gov.tw && /usr/bin/php daily_update.php >> logs/daily_update.log 2>&1
+
+# Setup instructions:
+# 1. Make cron.sh executable: chmod +x cron.sh
+# 2. Test the wrapper script: ./cron.sh
+# 3. Add to crontab: crontab -e
+# 4. Monitor logs: tail -f logs/daily_update_YYYYMMDD.log
+
+# Wrapper script benefits:
+# - Automatic dependency checking
+# - Better error handling and logging
+# - Timestamped log entries
+# - Log rotation (keeps 30 days)
+# - Environment variable setup
+# - Automated git operations (pull, add, commit, push)
+
+# Git setup requirements:
+# 1. Ensure git is configured with user credentials
+# 2. Set up SSH keys or access tokens for push access
+# 3. Test git operations manually before automation:
+#    git pull && git add -A && git commit -m "test" && git push
