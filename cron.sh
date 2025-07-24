@@ -81,12 +81,7 @@ if [ $EXIT_CODE -eq 0 ]; then
         COMMIT_MSG="Daily data update ${COMMIT_DATE}
 
 - Added/updated ${JSON_FILES} penalty records
-- Total files changed: ${ADDED_FILES}
-- Automated update from PRTR API
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+- Total files changed: ${ADDED_FILES}"
 
         # Commit changes
         git commit -m "$COMMIT_MSG" >> "$LOG_FILE" 2>&1
