@@ -234,9 +234,7 @@ class PrtrCrawler
                 $filePath = $this->createJsonFilePath($docsPath, $parsedId);
                 $this->ensureDirectoryExists(dirname($filePath));
 
-                $jsonData = array_merge($row, [
-                    'created_at' => date('Y-m-d H:i:s', time())
-                ]);
+                $jsonData = $row;
 
                 if (file_put_contents($filePath, json_encode($jsonData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) !== false) {
                     $savedFiles[] = $filePath;
